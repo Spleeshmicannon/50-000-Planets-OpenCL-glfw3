@@ -11,6 +11,9 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#define GLFW_EXPOSE_NATIVE_WGL
+#include <GLFW/glfw3native.h>
+
 static const size_t width = 1904;
 static const size_t height = 1071;
 
@@ -48,7 +51,16 @@ __forceinline void setupOpenCL()
 		planets[(i * MATRIX_WIDTH) + 4] = 0; // dy
 	}
 
-	clObjs.context = cl::Context({ cl::Device::getDefault() });
+	cl::Platform platform = cl::Platform::getDefault();
+
+	cl_context_properties contextProperties[] = 
+	{
+		CL_GL_CONTEXT_KHR, (cl_context_properties)glfwGetWGLContext(window),
+		CL_WGL_HDC_KHR, (cl_context_properties)wglGetCurrentDC(),
+		0
+	};
+
+	clObjs.context = cl::Context(cl::Device::getDefault(), contextProperties);
 
 	// The kernel
 	cl::Program::Sources sources;
@@ -66,7 +78,7 @@ __forceinline void setupOpenCL()
 	{
 		std::cout << "error: " << clObjs.program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(cl::Device::getDefault()) << std::endl;
 	}
-
+	
 	clObjs.inBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_full);
 	clObjs.outBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_points);
 
