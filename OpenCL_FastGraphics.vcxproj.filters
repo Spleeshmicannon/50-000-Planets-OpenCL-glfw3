@@ -16,35 +16,15 @@
     <Filter Include="CL kernels">
       <UniqueIdentifier>{fb1143ae-214a-4c01-832d-5d0907ce2e73}</UniqueIdentifier>
     </Filter>
-    <Filter Include="GL Shaders">
-      <UniqueIdentifier>{b00915d4-df2c-47cd-900f-2f1738115a03}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="shaderHelper.h">
-      <Filter>Header Files</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="clObjects.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="glObjects.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="device.cl">
       <Filter>CL kernels</Filter>
-    </None>
-    <None Include="shader.vert">
-      <Filter>GL Shaders</Filter>
-    </None>
-    <None Include="shader.frag">
-      <Filter>GL Shaders</Filter>
     </None>
   </ItemGroup>
 </Project>

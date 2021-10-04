@@ -144,17 +144,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="shaderHelper.h" />
     <ClCompile Include="source.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="clObjects.h" />
-    <ClInclude Include="glObjects.h" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="device.cl" />
-    <None Include="shader.frag" />
-    <None Include="shader.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

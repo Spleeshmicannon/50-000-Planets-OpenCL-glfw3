@@ -1,20 +1,26 @@
-#include "clObjects.h"
-#include "shaderHelper.h"
+// the OpenGL wrangler library for
+// later versions of OpenGL
+#include <GL/glew.h>
 
+// GLFW3 graphics library
+// exposing some native stuff to 
+// make OpenCL OpenGL interop work
+#define GLFW_EXPOSE_NATIVE_WGL
+#define GLFW_EXPOSE_NATIVE_WIN32
+
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
+// OpenCL 1.2 header
+#include <CL/cl.hpp>
+
+// standard libraries
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <string>
 #include <cstdlib>
-#include <mutex>
-
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-
-#define GLFW_EXPOSE_NATIVE_WGL
-#define GLFW_EXPOSE_NATIVE_WIN32
-
-#include <GLFW/glfw3native.h>
+#include <fstream>
 
 // width and height need to be saved in memory
 // for OpenGL calls.
@@ -27,22 +33,82 @@
 static const size_t width = 1904;
 static const size_t height = 1071;
 
-#define INLINE //__forceinline
+// using __forceinline only with compatible compiler
+#ifdef _MSC_VER
+#define INLINE __forceinline
+#else
+#define INLINE static inline
+#endif
+
+// some useful macros
 #define WINDOW_TITLE "OpenCL Render"
 #define MATRIX_HEIGHT 50000
 #define MATRIX_WIDTH 5
+
+// a convenient struct for storing the many OpenCL objects
+// that get used
+struct clObjects
+{
+	cl::Context context;
+	cl::Program program;
+	cl::Buffer inBuffer;
+	cl::Buffer outBuffer;
+	cl::BufferGL glBuffer;
+	cl::Kernel physicsKernel;
+	cl::CommandQueue queue;
+};
 
 // computing sizes at compile time
 constexpr size_t planets_size_full = MATRIX_HEIGHT * MATRIX_WIDTH * sizeof(float);
 constexpr size_t planets_size_points = MATRIX_HEIGHT * 2 * sizeof(float);
 
+// global variables
 clObjects clObjs;
 uint8_t oldFps = 0;
 GLFWwindow* window;
 GLuint planets_vbo;
 
+INLINE std::string readFile(const std::string filename)
+{
+	// technically this would be a little dodgy if
+	// you were reading in more variable files
+	// but I'm reading the same one file every time
+	// so it's always going to work and is never
+	// going to be problem unless the file is changed
+
+	// string for file data to be stored in
+	std::string data;
+
+	// reading until \0 null termination character
+	std::getline(std::ifstream(filename), data, '\0');
+
+	// if data.size is 0, then the file wasn't found
+	if (data.size() == 0)
+	{
+		std::cerr << "No file found: " << filename << "\t\n";
+	}
+
+	// returning any found file data
+	return data;
+}
+
+INLINE void initOpenGL()
+{
+	// wrangling OpenGL functions
+	const GLint GlewInitResult = glewInit();
+
+	// checking if wrangle was
+	if (GLEW_OK != GlewInitResult)
+	{
+		// if this failed then the program can't run so print error and exit
+		std::cerr << "GLEW ERROR: " << glewGetErrorString(GlewInitResult) << "\t\n";
+		exit(EXIT_FAILURE);
+	}
+}
+
 INLINE void setupOpenCL()
 {
+	// seeding future rand() calls
 	srand(500);
 
 	// allocating memory for initial planet setup
