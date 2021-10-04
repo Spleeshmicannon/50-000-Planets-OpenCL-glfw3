@@ -12,6 +12,8 @@
 #include <GLFW/glfw3.h>
 
 #define GLFW_EXPOSE_NATIVE_WGL
+#define GLFW_EXPOSE_NATIVE_WIN32
+
 #include <GLFW/glfw3native.h>
 
 static const size_t width = 1904;
@@ -28,9 +30,6 @@ constexpr size_t planets_size_points = MATRIX_HEIGHT * 2 * sizeof(float);
 #define X 1
 #define Y 2
 
-//float planets[MATRIX_HEIGHT][MATRIX_WIDTH];
-float* planets;
-
 clObjects clObjs;
 uint8_t oldFps = 0;
 GLFWwindow* window;
@@ -40,7 +39,7 @@ __forceinline void setupOpenCL()
 {
 	srand(500);
 
-	planets = new float[MATRIX_HEIGHT * MATRIX_WIDTH];
+	float * planets = new float[MATRIX_HEIGHT * MATRIX_WIDTH];
 
 	for (int i = 0; i < MATRIX_HEIGHT; ++i)
 	{
@@ -51,12 +50,15 @@ __forceinline void setupOpenCL()
 		planets[(i * MATRIX_WIDTH) + 4] = 0; // dy
 	}
 
-	cl::Platform platform = cl::Platform::getDefault();
+	// will match cl::Device::GetDefault since its the first platform
+	cl_platform_id c_platform;
+	clGetPlatformIDs(1, &c_platform, NULL);
 
 	cl_context_properties contextProperties[] = 
 	{
 		CL_GL_CONTEXT_KHR, (cl_context_properties)glfwGetWGLContext(window),
-		CL_WGL_HDC_KHR, (cl_context_properties)wglGetCurrentDC(),
+		CL_WGL_HDC_KHR, (cl_context_properties)GetDC(glfwGetWin32Window(window)),
+		CL_CONTEXT_PLATFORM, (cl_context_properties)c_platform,
 		0
 	};
 
@@ -78,20 +80,23 @@ __forceinline void setupOpenCL()
 	{
 		std::cout << "error: " << clObjs.program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(cl::Device::getDefault()) << std::endl;
 	}
-	
+
+	// setting up GPU memory objects
 	clObjs.inBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_full);
 	clObjs.outBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_points);
+	clObjs.glBuffer = cl::BufferGL(clObjs.context, CL_MEM_READ_WRITE, planets_vbo);
 
 	// buffer initialisation
 	clObjs.queue = cl::CommandQueue(clObjs.context, cl::Device::getDefault());
 	clObjs.queue.enqueueWriteBuffer(clObjs.inBuffer, CL_TRUE, 0, planets_size_full, planets);
 
+	// setting up compiled kernel for execution
 	clObjs.physicsKernel = cl::Kernel(clObjs.program, "planetCalc");
 	clObjs.physicsKernel.setArg(0, clObjs.inBuffer);
 	clObjs.physicsKernel.setArg(1, clObjs.outBuffer);
 
+	// resizing planets
 	delete[] planets;
-	planets = new float[MATRIX_HEIGHT * 2];
 }
 
 __forceinline void configureOpenGL()
@@ -102,6 +107,8 @@ __forceinline void configureOpenGL()
 	// make the new vbo active
 	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
 
+	// making [0 - width] (for x) and [0 - height] (for y) 
+	// the minimums and maximums instead of -1 and 1
 	gluOrtho2D(0, width, 0, height);
 }
 
@@ -120,23 +127,39 @@ __forceinline void manageTitle(std::chrono::steady_clock::time_point start)
 
 __forceinline void updatePlanetVBO()
 {
-	glBufferData(GL_ARRAY_BUFFER, planets_size_points, planets, GL_STATIC_DRAW);
+	// setting the 
 	glVertexPointer(2, GL_FLOAT, 0, NULL);
+	
+	// binding the buffer
 	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
 }
 
 __forceinline void runOpenCL()
 {
+	// executing the kernel
 	clObjs.queue.enqueueNDRangeKernel(clObjs.physicsKernel, cl::NullRange, cl::NDRange(MATRIX_HEIGHT), cl::NullRange);
 	clObjs.queue.finish();
-	clObjs.queue.enqueueReadBuffer(clObjs.outBuffer, CL_TRUE, 0, planets_size_points, planets);
+	
+	// making sure OpenGL is finished with its vertex buffer
+	glFinish();
+	
+	// acquiring the OpenGL object (vertex buffer) for OpenCL use
+	const std::vector<cl::Memory> glObjs = { clObjs.glBuffer };
+	clObjs.queue.enqueueAcquireGLObjects(&glObjs);
+	
+	// copying the OpenCL buffer to the BufferGL
+	clObjs.queue.enqueueCopyBuffer(clObjs.outBuffer, clObjs.glBuffer, 0, 0, planets_size_points);
+
+	// releasing the OpenGL object
+	clObjs.queue.enqueueReleaseGLObjects(&glObjs);
 }
 
 __forceinline void render()
 {
+	updatePlanetVBO();
+
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	updatePlanetVBO();
 	glDrawArrays(GL_POINTS, 0, MATRIX_HEIGHT);
 
 	glFlush();
@@ -166,6 +189,15 @@ void setup()
 	// configuring openGL settings
 	configureOpenGL();
 
+	// setting vertex buffer data
+	// the data var is NULL since I'll get it from OpenCL
+	glBufferData(GL_ARRAY_BUFFER, planets_size_points, NULL, GL_STATIC_DRAW);
+
+	// initial data binding to complete setup
+	updatePlanetVBO();
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+
 	// compiling/preparing the OpenCL compute shaders and setting up the queue
 	setupOpenCL();
 }
@@ -179,9 +211,8 @@ int main(int argc, char** argv)
 	// initial running of OpenCL do get data
 	runOpenCL();
 
+	// getting first from from OpenCL
 	updatePlanetVBO();
-
-	glEnableClientState(GL_VERTEX_ARRAY);
 
 	// main program loop
 	while (!glfwWindowShouldClose(window))
@@ -206,7 +237,5 @@ int main(int argc, char** argv)
 
 	// terminate on close
 	glfwTerminate();
-
-	delete[] planets;
 	return 0;
 }
