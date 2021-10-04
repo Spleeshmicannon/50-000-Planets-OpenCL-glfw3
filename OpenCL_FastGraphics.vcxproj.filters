@@ -22,9 +22,4 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="device.cl">
-      <Filter>CL kernels</Filter>
-    </None>
-  </ItemGroup>
 </Project>

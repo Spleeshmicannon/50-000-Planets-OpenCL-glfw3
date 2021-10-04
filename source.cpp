@@ -11,16 +11,12 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
-// OpenCL 1.2 header
-#include <CL/cl.hpp>
-
 // standard libraries
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <string>
 #include <cstdlib>
-#include <fstream>
 
 // width and height need to be saved in memory
 // for OpenGL calls.
@@ -42,56 +38,20 @@ static constexpr size_t height = 1071;
 
 // some useful macros
 #define WINDOW_TITLE "OpenCL Render"
-#define MATRIX_HEIGHT 50000
-#define MATRIX_WIDTH 5
-#define RENDER_DIMENSIONS 3
+#define SIZE 5000
+#define G 0.000006743f
 
-// a convenient struct for storing the many OpenCL objects
-// that get used
-struct clObjects
+// planet data
+struct Planet
 {
-	cl::Context context;
-	cl::Program program;
-	cl::Buffer inBuffer;
-	cl::Buffer outBuffer;
-	cl::BufferGL glBuffer;
-	cl::Kernel physicsKernel;
-	cl::CommandQueue queue;
+	float mass, x, y, dx, dy;
 };
 
-// computing sizes at compile time
-constexpr size_t planets_size_full = MATRIX_HEIGHT * MATRIX_WIDTH * sizeof(float);
-constexpr size_t planets_size_points = MATRIX_HEIGHT * RENDER_DIMENSIONS * sizeof(float);
-
 // global variables
-clObjects clObjs;
 uint8_t oldFps = 0;
 GLFWwindow* window;
 GLuint planets_vbo;
-
-INLINE std::string readFile(const std::string filename)
-{
-	// technically this would be a little dodgy if
-	// you were reading in more variable files
-	// but I'm reading the same one file every time
-	// so it's always going to work and is never
-	// going to be problem unless the file is changed
-
-	// string for file data to be stored in
-	std::string data;
-
-	// reading until \0 null termination character
-	std::getline(std::ifstream(filename), data, '\0');
-
-	// if data.size is 0, then the file wasn't found
-	if (data.size() == 0)
-	{
-		std::cerr << "No file found: " << filename << "\t\n";
-	}
-
-	// returning any found file data
-	return data;
-}
+Planet planets[SIZE];
 
 INLINE void initOpenGL()
 {
@@ -107,97 +67,35 @@ INLINE void initOpenGL()
 	}
 }
 
-INLINE void setupOpenCL()
+INLINE void setupPlanets()
 {
 	// seeding future rand() calls
 	srand(50);
 
-	// allocating memory for initial planet setup
-	float * planets = new float[MATRIX_HEIGHT * MATRIX_WIDTH];
-
-	for (int i = 0; i < MATRIX_HEIGHT; ++i)
+	// setting initial values
+	for (int i = 0; i < SIZE; ++i)
 	{
-		planets[(i * MATRIX_WIDTH) + 0 /*mass*/	] = (float(rand() % 999) + 1.0f);
-		planets[(i * MATRIX_WIDTH) + 1 /*x*/	] = ((float(rand() % width / 4)) * 2) + float(width / 4);
-		planets[(i * MATRIX_WIDTH) + 2 /*y*/	] = ((float(rand() % height / 4)) * 2) + float(height / 4);
-		planets[(i * MATRIX_WIDTH) + 3 /*dx*/	] = 0;
-		planets[(i * MATRIX_WIDTH) + 4 /*dy*/	] = 0;
+		planets[i].mass = (float(rand() % 999) + 1.0f);
+		planets[i].x = ((float(rand() % width / 4)) * 2) + float(width / 4);
+		planets[i].y = ((float(rand() % height / 4)) * 2) + float(height / 4);
+		planets[i].dx = 0;
+		planets[i].dy = 0;
 	}
-
-	// will match cl::Device::GetDefault since its the first platform
-	// for some reason the context properties still only works with the C version
-	// this is only OpenCL 1.2 though
-	cl_platform_id c_platform;
-	clGetPlatformIDs(1, &c_platform, NULL);
-
-	cl_context_properties contextProperties[] = 
-	{
-		CL_GL_CONTEXT_KHR, (cl_context_properties)glfwGetWGLContext(window), // setting context as the window
-		CL_WGL_HDC_KHR, (cl_context_properties)GetDC(glfwGetWin32Window(window)), // setting HDC, getting value from window
-		CL_CONTEXT_PLATFORM, (cl_context_properties)c_platform, // the C version of the platform object
-		0 // breaks without 0 at the end
-	};
-
-	clObjs.context = cl::Context(cl::Device::getDefault(), contextProperties);
-
-	// The kernel
-	cl::Program::Sources sources;
-
-	// raw kernel string
-	const std::string deviceData = readFile("device.cl");
-
-	// adding kernel string to the source data structure
-	sources.push_back({ deviceData.c_str(), deviceData.length() });
-
-	// setting up program for building runnable kernel objects
-	clObjs.program = cl::Program(clObjs.context, sources);
-
-	// compiling the OpenCL compute kernel/shader
-	if (clObjs.program.build({ cl::Device::getDefault() }) != CL_SUCCESS)
-	{
-		std::cout << "error: " << clObjs.program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(cl::Device::getDefault()) << std::endl;
-	}
-
-	// setting up GPU memory objects
-	clObjs.inBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_full);
-	clObjs.outBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_points);
-
-	// assigning vertex buffer to an OpenCL object for OpenCL OpenGL interop
-	clObjs.glBuffer = cl::BufferGL(clObjs.context, CL_MEM_READ_WRITE, planets_vbo);
-
-	// buffer initialisation
-	clObjs.queue = cl::CommandQueue(clObjs.context, cl::Device::getDefault());
-	clObjs.queue.enqueueWriteBuffer(clObjs.inBuffer, CL_TRUE, 0, planets_size_full, planets);
-
-	// setting up compiled kernel for execution
-	clObjs.physicsKernel = cl::Kernel(clObjs.program, "planetCalc");
-	clObjs.physicsKernel.setArg(0, clObjs.inBuffer);
-	clObjs.physicsKernel.setArg(1, clObjs.outBuffer);
-
-	// deleting intial planets memory
-	delete[] planets;
 }
 
 INLINE void configureOpenGL()
 {
-	// create vbo and use variable id to store vbo id
-	glGenBuffers(1, &planets_vbo);
-
-	// make the new vbo active
-	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
-
 	// setting matrix
-	glMatrixMode(GL_MODELVIEW_MATRIX);
-	glLoadIdentity();
+	glMatrixMode(GL_PROJECTION);
 
-	// setting viewport to manage 3D rendering
-	glViewport(0,0,width,height);
+	// setting up how values are normalized
+	glOrtho(0, width, height, 0, -1, 1);
 }
 
 INLINE void manageTitle(std::chrono::steady_clock::time_point start)
 {
 	// calculating frame rate
-	const uint8_t fps = std::round(1 / (
+	uint8_t fps = std::round(1 / (
 		std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start)
 		).count());
 
@@ -209,33 +107,38 @@ INLINE void manageTitle(std::chrono::steady_clock::time_point start)
 	}
 }
 
-INLINE void updatePlanetVBO()
+INLINE void calculatePlanetsPositions()
 {
-	// setting the 
-	glVertexPointer(RENDER_DIMENSIONS, GL_FLOAT, 0, NULL);
-	
-	// binding the buffer
-	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
-}
+	// Get the index of the current element to be processed
+	for (int i = 0; i < SIZE; ++i)
+	{
+		float fx = 0, fy = 0;
+		for (int j = 0; j < SIZE; ++j)
+		{
+			if (j == i) continue; // not comparing planet to itself
+			float F, rx, ry;
 
-INLINE void runOpenCL()
-{
-	// executing the kernel
-	clObjs.queue.enqueueNDRangeKernel(clObjs.physicsKernel, cl::NullRange, cl::NDRange(MATRIX_HEIGHT), cl::NullRange);
-	clObjs.queue.finish();
-	
-	// making sure OpenGL is finished with its vertex buffer
-	glFinish();
-	
-	// acquiring the OpenGL object (vertex buffer) for OpenCL use
-	const std::vector<cl::Memory> glObjs = { clObjs.glBuffer };
-	clObjs.queue.enqueueAcquireGLObjects(&glObjs);
-	
-	// copying the OpenCL buffer to the BufferGL
-	clObjs.queue.enqueueCopyBuffer(clObjs.outBuffer, clObjs.glBuffer, 0, 0, planets_size_points);
+			// calculating distance
+			rx = planets[i].x - planets[j].x;
+			ry = planets[i].y - planets[j].y;
 
-	// releasing the OpenGL object
-	clObjs.queue.enqueueReleaseGLObjects(&glObjs);
+			// gravity calculation -> G * M0 * M1 / R^2
+			if ((unsigned int(rx) | unsigned int(ry)) == 0) F = (planets[i].mass * planets[j].mass * G);
+			else F = (planets[i].mass * planets[j].mass * G) / ((rx * rx) + (ry * ry));
+
+			// doing 0 checks so no NaNs show up
+			if (rx != 0) fx += -F * rx;
+			if (ry != 0) fy += -F * ry;
+		}
+
+		// calculating rate of change
+		planets[i].dx += fx / planets[i].mass;
+		planets[i].dy += fy / planets[i].mass;
+
+		// setting coordinates
+		planets[i].x += planets[i].dx;
+		planets[i].y += planets[i].dy;
+	}
 }
 
 INLINE void render()
@@ -243,8 +146,12 @@ INLINE void render()
 	// clear screen to avoid onioning
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	// draw vertex buffer
-	glDrawArrays(GL_POINTS, 0, MATRIX_HEIGHT);
+	glBegin(GL_POINTS);
+	for (int i = 0; i < SIZE; ++i)
+	{
+		glVertex2f(planets[i].x, planets[i].y);
+	}
+	glEnd();
 
 	// flush changes
 	glFlush();
@@ -252,6 +159,9 @@ INLINE void render()
 
 void setup()
 {
+	// setting initial planets values
+	setupPlanets();
+
 	// initialising glfw (wrapper for platform code)
 	glfwInit();
 
@@ -271,20 +181,8 @@ void setup()
 	// initialising function pointers (glew.h)
 	initOpenGL();
 
-	// configuring openGL settings
+	// configuring OpenGL settings
 	configureOpenGL();
-
-	// setting vertex buffer data
-	// the data var is NULL since I'll get it from OpenCL
-	glBufferData(GL_ARRAY_BUFFER, planets_size_points, NULL, GL_STATIC_DRAW);
-
-	// initial data binding to complete setup
-	updatePlanetVBO();
-
-	glEnableClientState(GL_VERTEX_ARRAY);
-
-	// compiling/preparing the OpenCL compute shaders and setting up the queue
-	setupOpenCL();
 }
 
 
@@ -293,19 +191,13 @@ int main(int argc, char** argv)
 	// sets up the program (OpenCL and OpenGL)
 	setup();
 
-	// initial running of OpenCL do get data
-	runOpenCL();
-
-	// getting first from from OpenCL
-	updatePlanetVBO();
-
 	// main program loop
 	while (!glfwWindowShouldClose(window))
 	{	
 		auto start = std::chrono::high_resolution_clock::now();
 
-		// processing data on gpu with opencl
-		runOpenCL();
+		// calculating planets positions
+		calculatePlanetsPositions();
 
 		// OpenGL render code
 		render();
