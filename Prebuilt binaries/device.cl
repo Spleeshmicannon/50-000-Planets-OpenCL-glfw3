@@ -1,4 +1,4 @@
-#define MATRIX_HEIGHT 100
+#define MATRIX_HEIGHT 50000
 #define MATRIX_WIDTH 5
 
 #define MASS 0
@@ -10,7 +10,7 @@
 
 __kernel void planetCalc(__global float planet[MATRIX_HEIGHT][MATRIX_WIDTH], __global float outPlanet[MATRIX_HEIGHT][2])
 {
-    // Get the index of the current element to be processed
+	// Get the index of the current element to be processed
 	__private int i = get_global_id(0);
 	__private float fx = 0, fy = 0;
 
@@ -22,13 +22,13 @@ __kernel void planetCalc(__global float planet[MATRIX_HEIGHT][MATRIX_WIDTH], __g
 		rx = planet[i][X] - planet[j][X]; // A - B
 		ry = planet[i][Y] - planet[j][Y]; // A - B
 
-		F = (planet[i][MASS] * planet[j][MASS] * G) / 
+		F = (planet[i][MASS] * planet[j][MASS] * G) /
 			(((rx * rx) + (ry * ry)) + 0.00000000000001f);
 
 		fx += (-F * rx) + 0.00000000000001f; // A
 		fy += (-F * ry) + 0.00000000000001f; // A
 	}
-	
+
 	planet[i][DX] += (fx / planet[i][MASS]);
 	planet[i][DY] += (fy / planet[i][MASS]);
 

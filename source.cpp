@@ -16,50 +16,59 @@
 
 #include <GLFW/glfw3native.h>
 
+// width and height need to be saved in memory
+// for OpenGL calls.
+// -----------------------------------------
+// I could make them macros
+// and then assign local variables the values
+// but that seems to complex for a 0.00000001ms
+// performance gain.
+// -----------------------------------------
 static const size_t width = 1904;
 static const size_t height = 1071;
 
+#define INLINE //__forceinline
 #define WINDOW_TITLE "OpenCL Render"
-#define MATRIX_HEIGHT 100000
+#define MATRIX_HEIGHT 50000
 #define MATRIX_WIDTH 5
 
 // computing sizes at compile time
 constexpr size_t planets_size_full = MATRIX_HEIGHT * MATRIX_WIDTH * sizeof(float);
 constexpr size_t planets_size_points = MATRIX_HEIGHT * 2 * sizeof(float);
 
-#define X 1
-#define Y 2
-
 clObjects clObjs;
 uint8_t oldFps = 0;
 GLFWwindow* window;
 GLuint planets_vbo;
 
-__forceinline void setupOpenCL()
+INLINE void setupOpenCL()
 {
 	srand(500);
 
+	// allocating memory for initial planet setup
 	float * planets = new float[MATRIX_HEIGHT * MATRIX_WIDTH];
 
 	for (int i = 0; i < MATRIX_HEIGHT; ++i)
 	{
-		planets[(i * MATRIX_WIDTH) + 0] = (float(rand() % 999) + 1.0f); // mass
-		planets[(i * MATRIX_WIDTH) + 1] = ((float(rand() % width / 4)) * 2) + float(width / 4); // x
-		planets[(i * MATRIX_WIDTH) + 2] = ((float(rand() % height / 4)) * 2) + float(height / 4); // y
-		planets[(i * MATRIX_WIDTH) + 3] = 0; // dx
-		planets[(i * MATRIX_WIDTH) + 4] = 0; // dy
+		planets[(i * MATRIX_WIDTH) + 0 /*mass*/	] = (float(rand() % 999) + 1.0f);
+		planets[(i * MATRIX_WIDTH) + 1 /*x*/	] = ((float(rand() % width / 4)) * 2) + float(width / 4);
+		planets[(i * MATRIX_WIDTH) + 2 /*y*/	] = ((float(rand() % height / 4)) * 2) + float(height / 4);
+		planets[(i * MATRIX_WIDTH) + 3 /*dx*/	] = 0;
+		planets[(i * MATRIX_WIDTH) + 4 /*dy*/	] = 0;
 	}
 
 	// will match cl::Device::GetDefault since its the first platform
+	// for some reason the context properties still only works with the C version
+	// this is only OpenCL 1.2 though
 	cl_platform_id c_platform;
 	clGetPlatformIDs(1, &c_platform, NULL);
 
 	cl_context_properties contextProperties[] = 
 	{
-		CL_GL_CONTEXT_KHR, (cl_context_properties)glfwGetWGLContext(window),
-		CL_WGL_HDC_KHR, (cl_context_properties)GetDC(glfwGetWin32Window(window)),
-		CL_CONTEXT_PLATFORM, (cl_context_properties)c_platform,
-		0
+		CL_GL_CONTEXT_KHR, (cl_context_properties)glfwGetWGLContext(window), // setting context as the window
+		CL_WGL_HDC_KHR, (cl_context_properties)GetDC(glfwGetWin32Window(window)), // setting HDC, getting value from window
+		CL_CONTEXT_PLATFORM, (cl_context_properties)c_platform, // the C version of the platform object
+		0 // breaks without 0 at the end
 	};
 
 	clObjs.context = cl::Context(cl::Device::getDefault(), contextProperties);
@@ -76,6 +85,7 @@ __forceinline void setupOpenCL()
 	// setting up program for building runnable kernel objects
 	clObjs.program = cl::Program(clObjs.context, sources);
 
+	// compiling the OpenCL compute kernel/shader
 	if (clObjs.program.build({ cl::Device::getDefault() }) != CL_SUCCESS)
 	{
 		std::cout << "error: " << clObjs.program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(cl::Device::getDefault()) << std::endl;
@@ -84,6 +94,8 @@ __forceinline void setupOpenCL()
 	// setting up GPU memory objects
 	clObjs.inBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_full);
 	clObjs.outBuffer = cl::Buffer(clObjs.context, CL_MEM_READ_WRITE, planets_size_points);
+
+	// assigning vertex buffer to an OpenCL object for OpenCL OpenGL interop
 	clObjs.glBuffer = cl::BufferGL(clObjs.context, CL_MEM_READ_WRITE, planets_vbo);
 
 	// buffer initialisation
@@ -95,11 +107,11 @@ __forceinline void setupOpenCL()
 	clObjs.physicsKernel.setArg(0, clObjs.inBuffer);
 	clObjs.physicsKernel.setArg(1, clObjs.outBuffer);
 
-	// resizing planets
+	// deleting intial planets memory
 	delete[] planets;
 }
 
-__forceinline void configureOpenGL()
+INLINE void configureOpenGL()
 {
 	// create vbo and use variable id to store vbo id
 	glGenBuffers(1, &planets_vbo);
@@ -112,12 +124,14 @@ __forceinline void configureOpenGL()
 	gluOrtho2D(0, width, 0, height);
 }
 
-__forceinline void manageTitle(std::chrono::steady_clock::time_point start)
+INLINE void manageTitle(std::chrono::steady_clock::time_point start)
 {
+	// calculating frame rate
 	const uint8_t fps = std::round(1 / (
 		std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start)
 		).count());
 
+	// if framerate change is small enough don't bother updating title
 	if (((fps >= oldFps - 2) && (fps <= oldFps + 2)) || !oldFps)
 	{
 		oldFps = fps;
@@ -125,7 +139,7 @@ __forceinline void manageTitle(std::chrono::steady_clock::time_point start)
 	}
 }
 
-__forceinline void updatePlanetVBO()
+INLINE void updatePlanetVBO()
 {
 	// setting the 
 	glVertexPointer(2, GL_FLOAT, 0, NULL);
@@ -134,7 +148,7 @@ __forceinline void updatePlanetVBO()
 	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
 }
 
-__forceinline void runOpenCL()
+INLINE void runOpenCL()
 {
 	// executing the kernel
 	clObjs.queue.enqueueNDRangeKernel(clObjs.physicsKernel, cl::NullRange, cl::NDRange(MATRIX_HEIGHT), cl::NullRange);
@@ -154,14 +168,15 @@ __forceinline void runOpenCL()
 	clObjs.queue.enqueueReleaseGLObjects(&glObjs);
 }
 
-__forceinline void render()
+INLINE void render()
 {
-	updatePlanetVBO();
-
+	// clear screen to avoid onioning
 	glClear(GL_COLOR_BUFFER_BIT);
 
+	// draw vertex buffer
 	glDrawArrays(GL_POINTS, 0, MATRIX_HEIGHT);
 
+	// flush changes
 	glFlush();
 }
 

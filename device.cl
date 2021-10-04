@@ -1,4 +1,4 @@
-#define MATRIX_HEIGHT 100000
+#define MATRIX_HEIGHT 50000
 #define MATRIX_WIDTH 5
 
 #define MASS 0
