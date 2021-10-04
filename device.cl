@@ -1,5 +1,9 @@
 #define MATRIX_HEIGHT 50000
 #define MATRIX_WIDTH 5
+#define RENDER_DIMENSIONS 3
+#define width 1904
+#define height 1071
+
 
 #define MASS 0
 #define X 1
@@ -8,7 +12,7 @@
 #define DY 4
 #define G 0.000006743f
 
-__kernel void planetCalc(__global float planet[MATRIX_HEIGHT][MATRIX_WIDTH], __global float outPlanet[MATRIX_HEIGHT][2])
+__kernel void planetCalc(__global float planet[MATRIX_HEIGHT][MATRIX_WIDTH], __global float outPlanet[MATRIX_HEIGHT][RENDER_DIMENSIONS])
 {
 	// Get the index of the current element to be processed
 	__private int i = get_global_id(0);
@@ -35,8 +39,9 @@ __kernel void planetCalc(__global float planet[MATRIX_HEIGHT][MATRIX_WIDTH], __g
 	planet[i][X] += planet[i][DX];
 	planet[i][Y] += planet[i][DY];
 
-	outPlanet[i][0] = planet[i][X];
-	outPlanet[i][1] = planet[i][Y];
+	outPlanet[i][0] = (planet[i][X] / width) - 0.5;
+	outPlanet[i][1] = (planet[i][Y] / height) - 0.5;
+	outPlanet[i][2] = 1 / planet[i][MASS];
 }
 
 __kernel void image_make_black(__write_only image2d_t image)

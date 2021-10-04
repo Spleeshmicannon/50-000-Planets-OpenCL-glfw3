@@ -44,6 +44,7 @@ static constexpr size_t height = 1071;
 #define WINDOW_TITLE "OpenCL Render"
 #define MATRIX_HEIGHT 50000
 #define MATRIX_WIDTH 5
+#define RENDER_DIMENSIONS 3
 
 // a convenient struct for storing the many OpenCL objects
 // that get used
@@ -60,7 +61,7 @@ struct clObjects
 
 // computing sizes at compile time
 constexpr size_t planets_size_full = MATRIX_HEIGHT * MATRIX_WIDTH * sizeof(float);
-constexpr size_t planets_size_points = MATRIX_HEIGHT * 2 * sizeof(float);
+constexpr size_t planets_size_points = MATRIX_HEIGHT * RENDER_DIMENSIONS * sizeof(float);
 
 // global variables
 clObjects clObjs;
@@ -185,9 +186,12 @@ INLINE void configureOpenGL()
 	// make the new vbo active
 	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
 
-	// making [0 - width] (for x) and [0 - height] (for y) 
-	// the minimums and maximums instead of -1 and 1
-	gluOrtho2D(0, width, 0, height);
+	// setting matrix
+	glMatrixMode(GL_MODELVIEW_MATRIX);
+	glLoadIdentity();
+
+	// setting viewport to manage 3D rendering
+	glViewport(0,0,width,height);
 }
 
 INLINE void manageTitle(std::chrono::steady_clock::time_point start)
@@ -208,7 +212,7 @@ INLINE void manageTitle(std::chrono::steady_clock::time_point start)
 INLINE void updatePlanetVBO()
 {
 	// setting the 
-	glVertexPointer(2, GL_FLOAT, 0, NULL);
+	glVertexPointer(RENDER_DIMENSIONS, GL_FLOAT, 0, NULL);
 	
 	// binding the buffer
 	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
