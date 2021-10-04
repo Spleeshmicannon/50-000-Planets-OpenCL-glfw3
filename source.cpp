@@ -30,8 +30,8 @@
 // but that seems to complex for a 0.00000001ms
 // performance gain.
 // -----------------------------------------
-static const size_t width = 1904;
-static const size_t height = 1071;
+static constexpr size_t width = 1904;
+static constexpr size_t height = 1071;
 
 // using __forceinline only with compatible compiler
 #ifdef _MSC_VER
@@ -109,7 +109,7 @@ INLINE void initOpenGL()
 INLINE void setupOpenCL()
 {
 	// seeding future rand() calls
-	srand(500);
+	srand(50);
 
 	// allocating memory for initial planet setup
 	float * planets = new float[MATRIX_HEIGHT * MATRIX_WIDTH];
