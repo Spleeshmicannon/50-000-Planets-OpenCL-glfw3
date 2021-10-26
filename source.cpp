@@ -42,7 +42,7 @@ static constexpr size_t height = 1071;
 
 // some useful macros
 #define WINDOW_TITLE "OpenCL Render"
-#define MATRIX_HEIGHT 50000
+#define MATRIX_HEIGHT 100000
 #define MATRIX_WIDTH 5
 
 // a convenient struct for storing the many OpenCL objects
