@@ -214,10 +214,16 @@ INLINE void updatePlanetVBO()
 	glBindBuffer(GL_ARRAY_BUFFER, planets_vbo);
 }
 
-INLINE void runOpenCL()
+
+INLINE void runOpenCL(const int threadcount)
 {
+	const int itemsPerThread = (MATRIX_HEIGHT + threadcount - 1) / threadcount;
+
 	// executing the kernel
-	clObjs.queue.enqueueNDRangeKernel(clObjs.physicsKernel, cl::NullRange, cl::NDRange(MATRIX_HEIGHT), cl::NullRange);
+	clObjs.physicsKernel.setArg(2, threadcount);
+	clObjs.physicsKernel.setArg(3, itemsPerThread);
+
+	clObjs.queue.enqueueNDRangeKernel(clObjs.physicsKernel, cl::NullRange, cl::NDRange(threadcount), cl::NullRange);
 	clObjs.queue.finish();
 	
 	// making sure OpenGL is finished with its vertex buffer
@@ -290,7 +296,20 @@ int main(int argc, char** argv)
 	setup();
 
 	// initial running of OpenCL do get data
-	runOpenCL();
+	for (int i = 40; i > 0; i -= 10)
+	{
+		if (i == 0) i = 1;
+		auto start = std::chrono::high_resolution_clock::now();
+
+		runOpenCL(i);
+
+		std::cout << "num-threads: " << i << std::endl << "Time (seconds): " << 
+			std::chrono::duration<double>
+			(std::chrono::high_resolution_clock::now() - start)
+			.count() << std::endl;
+	}
+
+	runOpenCL(100000);
 
 	// getting first from from OpenCL
 	updatePlanetVBO();
@@ -301,7 +320,7 @@ int main(int argc, char** argv)
 		auto start = std::chrono::high_resolution_clock::now();
 
 		// processing data on gpu with opencl
-		runOpenCL();
+		runOpenCL(100000);
 
 		// OpenGL render code
 		render();
