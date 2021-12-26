@@ -1,4 +1,4 @@
-# 100-000-Planets-OpenCL-glfw3
+# 50-000-Planets-OpenCL-glfw3
 A simulation of the gravity of 50,000 planets using OpenCL-OpenGL interoperability.
 
 Here is an earlier version of this I recorded. The current version works much more efficiently but sadly makes it difficult for screen recording software to record what's happening:
